@@ -41,7 +41,7 @@ def exporter(locale, out_path: Path, instance: str, chart_id: str):
     import shutil
 
     server_url = (
-        "https://cc.sevenc7c.com" if instance == "chcy" else "https://chart-cyanvas.com"
+        "https://cc.milkbun.org" if instance == "chcy" else "https://chart-cyanvas.com"
     )
 
     print(AnsiColors.apply_foreground(locale.fetching, AnsiColors.BLUE))
