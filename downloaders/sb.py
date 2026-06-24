@@ -363,7 +363,7 @@ def exporter(locale, out_path: Path, chart_id: str, region: str = "auto"):
             mv_path = level_out_path / "video.mp4"
             download_file(mv_url, mv_path)
 
-        manifest = level_to_manifest(chart_data, diff, chart_id, original_mv_available or sekai_mv_available)
+        manifest = level_to_manifest(chart_data, diff, chart_id, dl_mv)
         
         with open(level_out_path / "manifest.json", "w", encoding="utf8") as f:
             json.dump(manifest, f)
