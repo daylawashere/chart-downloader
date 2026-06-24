@@ -32,10 +32,14 @@ from pathlib import Path
 def exporter(locale, out_path: Path, chart_id: str, region: str = "auto"):
     import json
     import requests
+    import gzip
     from helpers.file_downloader import download_file
     from helpers.file_type import detect_image, detect_audio
     import shutil
     from helpers.backgrounds import generate_backgrounds
+    from sonolus_converters import sus, pjsk
+    import io
+    import base64
 
     if region is None:
         region = "auto"
@@ -280,40 +284,75 @@ def exporter(locale, out_path: Path, chart_id: str, region: str = "auto"):
 
     cover_name = cover["assetbundleName"]
 
-    level_out_path = (
-        server_out_path
-        / region
-        / f"{chart_id}_cover_{all_covers[int(cover_index)-1]['id']}"
-    )
-    level_out_path.mkdir(parents=True, exist_ok=True)
-    shutil.rmtree(level_out_path)
-    level_out_path.mkdir(parents=True, exist_ok=True)
-
-    with open(level_out_path / "level.json", "w", encoding="utf8") as f:
-        json.dump(chart_data, f)
-
     print(AnsiColors.apply_foreground(locale.downloading, AnsiColors.BLUE))
 
     print("Score...")
+    
     for diff in all_difficulties:
         data_url = asset_paths["chart"].format(
             region=region, id_4_zpad=str(chart_id).zfill(4), diff=diff
         )
+        level_out_path = (
+            server_out_path
+            / region
+            / f"{chart_id}_{diff}_cover_{all_covers[int(cover_index)-1]['id']}"
+        )
+        level_out_path.mkdir(parents=True, exist_ok=True)
+        shutil.rmtree(level_out_path)
+        level_out_path.mkdir(parents=True, exist_ok=True)
+        
+        print(diff)
+        
         download_file(data_url, level_out_path / f"{diff}.sus")
+        
+        with open(level_out_path / f"{diff}.sus", "r") as f:
+            score = sus.load(f)
+        pjsk.export(level_out_path / "score.json.gz", score, chart_id)
+        
+        with open(level_out_path / "score.json", "w") as f:
+            score_path = (level_out_path / "score.json.gz")
+            score = gzip.decompress(base64.b64decode(score_path.read_bytes()))
+            f.write(score.decode("utf-8"))
+        
+        print("Music...")
+        bgm_url = asset_paths["music"].format(region=region, cover_name=cover_name)
+        music_path = level_out_path / "music.mp3"
+        download_file(bgm_url, music_path)
 
-    print("Music...")
-    bgm_url = asset_paths["music"].format(region=region, cover_name=cover_name)
-    music_path = level_out_path / "music.mp3"
-    download_file(bgm_url, music_path)
+        print("Preview...")
+        preview_url = asset_paths["preview"].format(region=region, cover_name=cover_name)
+        preview_path = level_out_path / "preview.mp3"
+        download_file(preview_url, preview_path)
 
-    print("Preview...")
-    preview_url = asset_paths["preview"].format(region=region, cover_name=cover_name)
-    preview_path = level_out_path / "preview.mp3"
-    download_file(preview_url, preview_path)
+        print("Jacket...")
+        cover_url = asset_paths["jacket"].format(region=region, jacket_name=jacket_name)
+        jacket_path = level_out_path / "jacket.png"
+        download_file(cover_url, jacket_path)
 
-    print("Jacket...")
-    cover_url = asset_paths["jacket"].format(region=region, jacket_name=jacket_name)
-    jacket_path = level_out_path / "jacket.png"
-    download_file(cover_url, jacket_path)
-    generate_backgrounds(jacket_path)
+        manifest = level_to_manifest(chart_data, diff, chart_id)
+        
+        with open(level_out_path / "manifest.json", "w", encoding="utf8") as f:
+            json.dump(manifest, f)
+        
+        shutil.make_archive(f"{chart_id}_{diff}_cover_{all_covers[int(cover_index)-1]['id']}", 'zip', level_out_path)
+        
     return True
+
+def level_to_manifest(chart_data, diff: str, id):
+    
+    m = chart_data
+    
+    m["formatVersion"] = 1
+    m["id"] = f"{id}-{diff}"
+    m["scoretitle"] = f"{m["title"]}-{diff}"
+    m["musicDifficultyType"] = diff
+    m["audioFileName"] = "music.mp3"
+    m["jacketFileName"] = "jacket.png"
+    m["scoreFileName"] = "score.json"
+
+    empty = ["description", "userName", "collaborationLabel", "videoFileName"]
+
+    for key in empty:
+        m[key] = ""
+    
+    return m
