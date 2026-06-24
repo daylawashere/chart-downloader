@@ -38,7 +38,7 @@ def exporter(locale, out_path: Path, chart_id: str, region: str = "auto"):
     import shutil
     from helpers.backgrounds import generate_backgrounds
     from sonolus_converters import sus, pjsk
-    import io
+    import os
     import base64
 
     if region is None:
@@ -51,6 +51,8 @@ def exporter(locale, out_path: Path, chart_id: str, region: str = "auto"):
         "music": "https://storage.sekai.best/sekai-{region}-assets/music/long/{cover_name}/{cover_name}.mp3",
         "preview": "https://storage.sekai.best/sekai-{region}-assets/music/short/{cover_name}/{cover_name}_short.mp3",
         "jacket": "https://storage.sekai.best/sekai-{region}-assets/music/jacket/{jacket_name}/{jacket_name}.png",
+        "sekai_mv": "https://storage.sekai.best/sekai-{region}-assets/live/2dmode/sekai_mv/{id_4_zpad}/{id_4_zpad}.mp4",
+        "original_mv": "https://storage.sekai.best/sekai-{region}-assets/live/2dmode/original_mv/{id_4_zpad}/{id_4_zpad}.mp4"
     }
     db_paths = {
         "jp": "https://raw.githubusercontent.com/Sekai-World/sekai-master-db-diff/refs/heads/main/{file}.json",
@@ -260,7 +262,7 @@ def exporter(locale, out_path: Path, chart_id: str, region: str = "auto"):
         [handle_cover(cover) for cover in all_covers],
     )
     cover = all_covers[int(cover_index) - 1]
-
+    
     possible_jacket_variants_url = db_paths[region].format(file="musicAssetVariants")
     possible_jacket_variants_resp = requests.get(possible_jacket_variants_url)
     if possible_jacket_variants_resp.status_code == 200:
@@ -283,10 +285,36 @@ def exporter(locale, out_path: Path, chart_id: str, region: str = "auto"):
         jacket_name = asset_variant["assetbundleName"]
 
     cover_name = cover["assetbundleName"]
+    
+    original_mv_url = asset_paths["original_mv"].format(
+            region=region, id_4_zpad=str(chart_id).zfill(4)
+        )
+    original_mv_resp = requests.get(original_mv_url)
+    if original_mv_resp.status_code == 200:
+        original_mv_available = True
+        
+    sekai_mv_url = asset_paths["sekai_mv"].format(
+            region=region, id_4_zpad=str(chart_id).zfill(4)
+        )
+    sekai_mv_resp = requests.get(sekai_mv_url)
+    if sekai_mv_resp.status_code == 200:
+        sekai_mv_available = True
+
+    dl_mv= False if ask(
+            "Download MV?",
+            ["1", "2"],
+            ["Yes", "No"]
+        ) == "2" else True
+    
+    if dl_mv and sekai_mv_available:
+        mv_url = sekai_mv_url if ask(
+            "Choose MV Type",
+            ["1", "2"],
+            ["Original", "Sekai"]
+        ) == "2" else original_mv_url
+    
 
     print(AnsiColors.apply_foreground(locale.downloading, AnsiColors.BLUE))
-
-    print("Score...")
     
     for diff in all_difficulties:
         data_url = asset_paths["chart"].format(
@@ -302,6 +330,7 @@ def exporter(locale, out_path: Path, chart_id: str, region: str = "auto"):
         level_out_path.mkdir(parents=True, exist_ok=True)
         
         print(diff)
+        print("Score...")
         
         download_file(data_url, level_out_path / f"{diff}.sus")
         
@@ -328,17 +357,30 @@ def exporter(locale, out_path: Path, chart_id: str, region: str = "auto"):
         cover_url = asset_paths["jacket"].format(region=region, jacket_name=jacket_name)
         jacket_path = level_out_path / "jacket.png"
         download_file(cover_url, jacket_path)
+        
+        if dl_mv:
+            print("MV...")
+            mv_path = level_out_path / "video.mp4"
+            download_file(mv_url, mv_path)
 
-        manifest = level_to_manifest(chart_data, diff, chart_id)
+        manifest = level_to_manifest(chart_data, diff, chart_id, original_mv_available or sekai_mv_available)
         
         with open(level_out_path / "manifest.json", "w", encoding="utf8") as f:
             json.dump(manifest, f)
+    
+    for diff in all_difficulties:
+        level_out_path = (
+            server_out_path
+            / region
+            / f"{chart_id}_{diff}_cover_{all_covers[int(cover_index)-1]['id']}"
+        )
         
-        shutil.make_archive(f"{chart_id}_{diff}_cover_{all_covers[int(cover_index)-1]['id']}", 'zip', level_out_path)
-        
+        shutil.make_archive(server_out_path / region / f"{chart_id}_{diff}_cover_{all_covers[int(cover_index)-1]['id']}", 'zip', level_out_path)
+        print(f"Exporting {diff} difficulty archive...")
+        shutil.rmtree(level_out_path)
     return True
 
-def level_to_manifest(chart_data, diff: str, id):
+def level_to_manifest(chart_data, diff: str, id, mv: False):
     
     m = chart_data
     
@@ -349,8 +391,10 @@ def level_to_manifest(chart_data, diff: str, id):
     m["audioFileName"] = "music.mp3"
     m["jacketFileName"] = "jacket.png"
     m["scoreFileName"] = "score.json"
+    
+    m["videoFileName"] = "video.mp4" if mv else ""
 
-    empty = ["description", "userName", "collaborationLabel", "videoFileName"]
+    empty = ["description", "userName", "collaborationLabel"]
 
     for key in empty:
         m[key] = ""
