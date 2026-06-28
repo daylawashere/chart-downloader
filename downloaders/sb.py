@@ -34,11 +34,8 @@ def exporter(locale, out_path: Path, chart_id: str, region: str = "auto"):
     import requests
     import gzip
     from helpers.file_downloader import download_file
-    from helpers.file_type import detect_image, detect_audio
     import shutil
-    from helpers.backgrounds import generate_backgrounds
     from sonolus_converters import sus, pjsk
-    import os
     import base64
 
     if region is None:
@@ -340,15 +337,6 @@ def exporter(locale, out_path: Path, chart_id: str, region: str = "auto"):
         
         download_file(data_url, level_out_path / f"{diff}.sus")
         
-        with open(level_out_path / f"{diff}.sus", "r") as f:
-            score = sus.load(f)
-        pjsk.export(level_out_path / "score.json.gz", score, chart_id)
-        
-        with open(level_out_path / "score.json", "w") as f:
-            score_path = (level_out_path / "score.json.gz")
-            score = gzip.decompress(base64.b64decode(score_path.read_bytes()))
-            f.write(score.decode("utf-8"))
-        
         print("Music...")
         bgm_url = asset_paths["music"].format(region=region, cover_name=cover_name)
         music_path = level_out_path / "music.mp3"
@@ -368,6 +356,16 @@ def exporter(locale, out_path: Path, chart_id: str, region: str = "auto"):
             print("MV...")
             mv_path = level_out_path / "video.mp4"
             download_file(mv_url, mv_path)
+
+        print(AnsiColors.apply_foreground(locale.converting, AnsiColors.BLUE))
+        with open(level_out_path / f"{diff}.sus", "r") as f:
+            score = sus.load(f)
+        pjsk.export(level_out_path / "score.json.gz", score, chart_id)
+        
+        with open(level_out_path / "score.json", "w") as f:
+            score_path = (level_out_path / "score.json.gz")
+            score = gzip.decompress(base64.b64decode(score_path.read_bytes()))
+            f.write(score.decode("utf-8"))
 
         manifest = level_to_manifest(chart_data, diff, chart_id, dl_mv)
         
