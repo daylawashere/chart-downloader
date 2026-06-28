@@ -300,11 +300,14 @@ def exporter(locale, out_path: Path, chart_id: str, region: str = "auto"):
     if sekai_mv_resp.status_code == 200:
         sekai_mv_available = True
 
-    dl_mv= False if ask(
-            "Download MV?",
-            ["1", "2"],
-            ["Yes", "No"]
-        ) == "2" else True
+    if sekai_mv_available or original_mv_available:
+        dl_mv = False if ask(
+                "Download MV?",
+                ["1", "2"],
+                ["Yes", "No"]
+            ) == "2" else True
+    else:
+        dl_mv = False
     
     if dl_mv and sekai_mv_available:
         mv_url = sekai_mv_url if ask(
