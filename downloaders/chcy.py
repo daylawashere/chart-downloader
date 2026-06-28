@@ -115,9 +115,9 @@ def exporter(locale, out_path: Path, instance: str, chart_id: str):
 
         preview_path = level_out_path / "preview"
         download_file(preview_url, preview_path)
-        prev_ext = detect_audio(preview_path)
-        if prev_ext != "unknown":
-            new_path = preview_path.with_suffix(f".{prev_ext}")
+        ext = detect_audio(preview_path)
+        if ext != "unknown":
+            new_path = preview_path.with_suffix(f".{ext}")
             preview_path.rename(new_path)
 
     if "cover" in item:
@@ -160,7 +160,7 @@ def exporter(locale, out_path: Path, instance: str, chart_id: str):
         score = gzip.decompress(base64.b64decode(score_path.read_bytes()))
         f.write(score.decode("utf-8"))
         
-    manifest = level_to_manifest(item, chart_id, mus_ext, jkt_ext, music_offset)
+    manifest = level_to_manifest(item, chart_id, jkt_ext, music_offset)
         
     with open(level_out_path / "manifest.json", "w", encoding="utf8") as f:
         json.dump(manifest, f)
@@ -171,7 +171,7 @@ def exporter(locale, out_path: Path, instance: str, chart_id: str):
         
     return True
 
-def level_to_manifest(chart_data, id, mus_ext, jkt_ext, waveoffset):
+def level_to_manifest(chart_data, id, jkt_ext, waveoffset):
     
     m = chart_data
     
