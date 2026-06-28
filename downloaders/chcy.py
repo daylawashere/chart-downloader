@@ -2,6 +2,8 @@ from main import AnsiColors
 
 MUS_START_PADDING = 9 #Fuckffmpeg
 
+JACKET_SIZE = [740, 740]
+
 locale_keys = {
     "name": "cc_all",
     "name_archive": "cc",
@@ -131,9 +133,11 @@ def exporter(locale, out_path: Path, instance: str, chart_id: str):
         if jkt_ext != "unknown":
             new_path = jacket_path.with_suffix(f".{jkt_ext}")
             jacket_path.rename(new_path)
-            resize_jkt = Image.open(new_path)
-            resize_jkt.resize((740, 740))
-            resize_jkt.save(new_path)
+            print(jacket_path)
+            resized_jkt = Image.open(new_path)
+            print("resizing")
+            resized_jkt = resized_jkt.resize(JACKET_SIZE).convert("RGBA")
+            resized_jkt.save(new_path)
 
 
     print(AnsiColors.apply_foreground(locale.converting, AnsiColors.BLUE))
