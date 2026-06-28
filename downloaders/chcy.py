@@ -136,7 +136,7 @@ def exporter(locale, out_path: Path, instance: str, chart_id: str):
             print(jacket_path)
             resized_jkt = Image.open(new_path)
             print("resizing")
-            resized_jkt = resized_jkt.resize(JACKET_SIZE).convert("RGBA")
+            resized_jkt = resized_jkt.resize(JACKET_SIZE)
             resized_jkt.save(new_path)
 
 
