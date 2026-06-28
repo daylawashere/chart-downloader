@@ -1,5 +1,7 @@
 from main import AnsiColors
 
+MUS_START_PADDING = 9 #Fuckffmpeg
+
 locale_keys = {
     "name": "cc_all",
     "name_archive": "cc",
@@ -30,7 +32,6 @@ arguments = {
 
 from pathlib import Path
 
-
 def exporter(locale, out_path: Path, instance: str, chart_id: str):
     import json
     from sonolus_converters import usc, LevelData, pjsk, sus
@@ -40,6 +41,8 @@ def exporter(locale, out_path: Path, instance: str, chart_id: str):
     import shutil
     import gzip
     import base64
+    from pydub import AudioSegment
+    from PIL import Image
 
     server_url = (
         "https://cc.milkbun.org" if instance == "chcy" else "https://chart-cyanvas.com"
@@ -94,8 +97,13 @@ def exporter(locale, out_path: Path, instance: str, chart_id: str):
 
         mus_ext = detect_audio(music_path)
         if mus_ext != "unknown":
+            print("adding filler secs to audio file")
             new_path = music_path.with_suffix(f".{mus_ext}")
             music_path.rename(new_path)
+            mus_no_padding = AudioSegment.from_file(new_path)
+            padding = AudioSegment.silent(duration=MUS_START_PADDING*1000)
+            output_mus = padding + mus_no_padding
+            output_mus.export(new_path, format="mp3")
 
     if "preview" in item:
         print("Preview...")
@@ -123,11 +131,15 @@ def exporter(locale, out_path: Path, instance: str, chart_id: str):
         if jkt_ext != "unknown":
             new_path = jacket_path.with_suffix(f".{jkt_ext}")
             jacket_path.rename(new_path)
+            resize_jkt = Image.open(new_path)
+            resize_jkt.resize((740, 740))
+            resize_jkt.save(new_path)
+
 
     print(AnsiColors.apply_foreground(locale.converting, AnsiColors.BLUE))
     with open(level_out_path / "ChCyLevelData.json.gz", "rb") as f:
         score = LevelData.chart_cyanvas.load(f)
-        music_offset = score.metadata.waveoffset
+        music_offset = score.metadata.waveoffset + (0.03 if mus_ext == "mp3" else 0) 
     usc.export(level_out_path / "score.usc", score)
     
     print("attempting sus conversion")
@@ -149,7 +161,7 @@ def exporter(locale, out_path: Path, instance: str, chart_id: str):
     with open(level_out_path / "manifest.json", "w", encoding="utf8") as f:
         json.dump(manifest, f)
         
-    shutil.make_archive(server_out_path / level_out_path, 'zip', level_out_path)
+    shutil.make_archive(level_out_path, 'zip', level_out_path)
     print(f"Exporting song archive...")
     shutil.rmtree(level_out_path)
         
@@ -163,15 +175,15 @@ def level_to_manifest(chart_data, id, mus_ext, jkt_ext, waveoffset):
     m["id"] = id
     m["scoretitle"] = f"{m["title"]}"
     m["musicDifficultyType"] = "easy" # I can't really guess lmao ill see later if i can read diff from tags or smt
-    m["audioFileName"] = f"music.{mus_ext}"
+    m["audioFileName"] = "music.mp3"
     m["jacketFileName"] = f"jacket.{jkt_ext}"
-    m["scoreFileName"] = f"score.json"
+    m["scoreFileName"] = "score.json"
     m["lyricist"] = "-"
     m["composer"] = chart_data["artists"]
     m["arranger"] = chart_data["artists"]
     m["userName"] = chart_data["author"]
     m["playLevel"] = chart_data["rating"]
-    m["fillerSec"] = -waveoffset
+    m["fillerSec"] = MUS_START_PADDING + waveoffset
     empty = ["description", "collaborationLabel", "videoFileName"]
 
     for key in empty:
