@@ -33,12 +33,13 @@ from pathlib import Path
 
 def exporter(locale, out_path: Path, instance: str, chart_id: str):
     import json
-    from sonolus_converters import usc, LevelData
+    from sonolus_converters import usc, LevelData, pjsk, sus
     import requests
     from helpers.file_downloader import download_file
     from helpers.file_type import detect_image, detect_audio
-    from helpers.backgrounds import generate_backgrounds
     import shutil
+    import gzip
+    import base64
 
     server_url = (
         "https://cc.milkbun.org" if instance == "chcy" else "https://chart-cyanvas.com"
@@ -91,9 +92,9 @@ def exporter(locale, out_path: Path, instance: str, chart_id: str):
         music_path = level_out_path / "music"
         download_file(bgm_url, music_path)
 
-        ext = detect_audio(music_path)
-        if ext != "unknown":
-            new_path = music_path.with_suffix(f".{ext}")
+        mus_ext = detect_audio(music_path)
+        if mus_ext != "unknown":
+            new_path = music_path.with_suffix(f".{mus_ext}")
             music_path.rename(new_path)
 
     if "preview" in item:
@@ -104,9 +105,9 @@ def exporter(locale, out_path: Path, instance: str, chart_id: str):
 
         preview_path = level_out_path / "preview"
         download_file(preview_url, preview_path)
-        ext = detect_audio(preview_path)
-        if ext != "unknown":
-            new_path = preview_path.with_suffix(f".{ext}")
+        prev_ext = detect_audio(preview_path)
+        if prev_ext != "unknown":
+            new_path = preview_path.with_suffix(f".{prev_ext}")
             preview_path.rename(new_path)
 
     if "cover" in item:
@@ -118,19 +119,70 @@ def exporter(locale, out_path: Path, instance: str, chart_id: str):
         jacket_path = level_out_path / "jacket"
         download_file(cover_url, jacket_path)
 
-        ext = detect_image(jacket_path)
-        if ext != "unknown":
-            new_path = jacket_path.with_suffix(f".{ext}")
+        jkt_ext = detect_image(jacket_path)
+        if jkt_ext != "unknown":
+            new_path = jacket_path.with_suffix(f".{jkt_ext}")
             jacket_path.rename(new_path)
-            generate_backgrounds(new_path)
-        else:
-            try:
-                generate_backgrounds(jacket_path)
-            except:
-                pass
 
     print(AnsiColors.apply_foreground(locale.converting, AnsiColors.BLUE))
     with open(level_out_path / "ChCyLevelData.json.gz", "rb") as f:
         score = LevelData.chart_cyanvas.load(f)
+        music_offset = score.metadata.waveoffset
     usc.export(level_out_path / "score.usc", score)
+    
+    print("attempting sus conversion")
+    with open(level_out_path / "score.usc", "r") as f:
+        score = usc.load(f)
+    sus.export(level_out_path / "score.sus", score)
+    
+    with open(level_out_path / "score.sus", "r") as f:
+        score = sus.load(f)
+    pjsk.export(level_out_path / "score.json.gz", score, 1234567)
+    
+    with open(level_out_path / "score.json", "w") as f:
+        score_path = (level_out_path / "score.json.gz")
+        score = gzip.decompress(base64.b64decode(score_path.read_bytes()))
+        f.write(score.decode("utf-8"))
+        
+    manifest = level_to_manifest(item, chart_id, mus_ext, jkt_ext, music_offset)
+        
+    with open(level_out_path / "manifest.json", "w", encoding="utf8") as f:
+        json.dump(manifest, f)
+        
+    shutil.make_archive(server_out_path / level_out_path, 'zip', level_out_path)
+    print(f"Exporting song archive...")
+    shutil.rmtree(level_out_path)
+        
     return True
+
+def level_to_manifest(chart_data, id, mus_ext, jkt_ext, waveoffset):
+    
+    m = chart_data
+    
+    m["formatVersion"] = 1
+    m["id"] = id
+    m["scoretitle"] = f"{m["title"]}"
+    m["musicDifficultyType"] = "easy" # I can't really guess lmao ill see later if i can read diff from tags or smt
+    m["audioFileName"] = f"music.{mus_ext}"
+    m["jacketFileName"] = f"jacket.{jkt_ext}"
+    m["scoreFileName"] = f"score.json"
+    m["lyricist"] = "-"
+    m["composer"] = chart_data["artists"]
+    m["arranger"] = chart_data["artists"]
+    m["userName"] = chart_data["author"]
+    m["playLevel"] = chart_data["rating"]
+    m["fillerSec"] = -waveoffset
+    empty = ["description", "collaborationLabel", "videoFileName"]
+
+    for key in empty:
+        m[key] = ""
+    
+    byebye_adios = ["cover", "preview", "bgm", "data", "useSkin",
+                    "useBackground", "useEffect", "useParticle", 
+                    "author", "artists", "rating", "version", 
+                    "source", "name"]
+    
+    for key in byebye_adios:
+        del m[key]
+        
+    return m
