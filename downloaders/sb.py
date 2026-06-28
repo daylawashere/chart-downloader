@@ -286,6 +286,9 @@ def exporter(locale, out_path: Path, chart_id: str, region: str = "auto"):
 
     cover_name = cover["assetbundleName"]
     
+    original_mv_available = False
+    sekai_mv_available = False
+    
     original_mv_url = asset_paths["original_mv"].format(
             region=region, id_4_zpad=str(chart_id).zfill(4)
         )
