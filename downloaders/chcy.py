@@ -4,6 +4,8 @@ MUS_START_PADDING = 9 #Fuckffmpeg
 
 JACKET_SIZE = [740, 740]
 
+PLACEHOLDER_MUS_ID = 1234567
+
 locale_keys = {
     "name": "cc_all",
     "name_archive": "cc",
@@ -36,7 +38,7 @@ from pathlib import Path
 
 def exporter(locale, out_path: Path, instance: str, chart_id: str):
     import json
-    from sonolus_converters import usc, LevelData, pjsk, sus
+    from sonolus_converters import usc, LevelData, pjsk, sus, mmws
     import requests
     from helpers.file_downloader import download_file
     from helpers.file_type import detect_image, detect_audio
@@ -67,6 +69,7 @@ def exporter(locale, out_path: Path, instance: str, chart_id: str):
     print(f"[{item['rating']}] {item['title']}")
     print(item["artists"])
     print(item["author"])
+    print(item["tags"])
     del item["engine"]
 
     server_out_path = out_path / instance
@@ -79,6 +82,19 @@ def exporter(locale, out_path: Path, instance: str, chart_id: str):
 
     print(AnsiColors.apply_foreground(locale.downloading, AnsiColors.BLUE))
 
+    all_difficulties = ["easy", "normal", "hard", "expert", "master", "append"]
+    
+    diff = "expert" #default
+    
+    for title in item["tags"]:
+        for value in title.values():
+            print(value)
+            if value.lower() in all_difficulties:
+                diff = value.lower()
+                # yo i genuinely dont know how to work dictionaries excuse my swag
+                # this is all 100% google and stack overflow or geeksforgeeks and shit and a tiny amount of brain
+    print(diff)
+    
     if "data" in item:
         print("Score...")
         data_url = item["data"]["url"]
@@ -146,21 +162,28 @@ def exporter(locale, out_path: Path, instance: str, chart_id: str):
         music_offset = score.metadata.waveoffset + (0.03 if mus_ext == "mp3" else 0) 
     usc.export(level_out_path / "score.usc", score)
     
-    print("attempting sus conversion")
-    with open(level_out_path / "score.usc", "r") as f:
-        score = usc.load(f)
-    sus.export(level_out_path / "score.sus", score)
-    
-    with open(level_out_path / "score.sus", "r") as f:
-        score = sus.load(f)
-    pjsk.export(level_out_path / "score.json.gz", score, 1234567)
-    
-    with open(level_out_path / "score.json", "w") as f:
-        score_path = (level_out_path / "score.json.gz")
-        score = gzip.decompress(base64.b64decode(score_path.read_bytes()))
-        f.write(score.decode("utf-8"))
+    try:
+        print("Attempting usc>>sus>>pjsk conversion")
         
-    manifest = level_to_manifest(item, chart_id, jkt_ext, music_offset)
+        with open(level_out_path / "score.usc", "r") as f:
+            score = usc.load(f)
+        sus.export(level_out_path / "score.sus", score, True)
+
+        with open(level_out_path / "score.sus", "r") as f:
+            score = sus.load(f)
+        pjsk.export(level_out_path / "score.json.gz", score, PLACEHOLDER_MUS_ID)
+
+        with open(level_out_path / "score.json", "w") as f:
+            score_path = (level_out_path / "score.json.gz")
+            score = gzip.decompress(base64.b64decode(score_path.read_bytes()))
+            f.write(score.decode("utf-8"))
+            
+    except Exception as e:
+        print("Could not convert score! Manual conversion might be needed")
+        print(e)
+        pass
+        
+    manifest = level_to_manifest(item, diff, chart_id, jkt_ext, music_offset)
         
     with open(level_out_path / "manifest.json", "w", encoding="utf8") as f:
         json.dump(manifest, f)
@@ -171,14 +194,14 @@ def exporter(locale, out_path: Path, instance: str, chart_id: str):
         
     return True
 
-def level_to_manifest(chart_data, id, jkt_ext, waveoffset):
+def level_to_manifest(chart_data, diff: str, id, jkt_ext, waveoffset):
     
     m = chart_data
     
     m["formatVersion"] = 1
     m["id"] = id
     m["scoretitle"] = f"{m["title"]}"
-    m["musicDifficultyType"] = "easy" # I can't really guess lmao ill see later if i can read diff from tags or smt
+    m["musicDifficultyType"] = diff
     m["audioFileName"] = "music.mp3"
     m["jacketFileName"] = f"jacket.{jkt_ext}"
     m["scoreFileName"] = "score.json"
