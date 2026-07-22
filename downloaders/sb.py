@@ -46,7 +46,6 @@ def exporter(locale, out_path: Path, chart_id: str, region: str = "auto"):
     asset_paths = {
         "chart": "https://storage.sekai.best/sekai-{region}-assets/music/music_score/{id_4_zpad}_01/{diff}.txt",
         "music": "https://storage.sekai.best/sekai-{region}-assets/music/long/{cover_name}/{cover_name}.mp3",
-        "preview": "https://storage.sekai.best/sekai-{region}-assets/music/short/{cover_name}/{cover_name}_short.mp3",
         "jacket": "https://storage.sekai.best/sekai-{region}-assets/music/jacket/{jacket_name}/{jacket_name}.png",
         "sekai_mv": "https://storage.sekai.best/sekai-{region}-assets/live/2dmode/sekai_mv/{id_4_zpad}/{id_4_zpad}.mp4",
         "original_mv": "https://storage.sekai.best/sekai-{region}-assets/live/2dmode/original_mv/{id_4_zpad}/{id_4_zpad}.mp4"
@@ -128,11 +127,11 @@ def exporter(locale, out_path: Path, chart_id: str, region: str = "auto"):
     else:
         difficulties_data_resp.raise_for_status()
 
-    all_difficulties = [
-        diff["musicDifficulty"]
-        for diff in difficulties_data
-        if diff.get("musicId") == chart_id
+    music_difficulties = [
+    diff for diff in difficulties_data if diff.get("musicId") == chart_id
     ]
+    all_difficulties = [d["musicDifficulty"] for d in music_difficulties]
+    play_levels = {d["musicDifficulty"]: d["playLevel"] for d in music_difficulties}
 
     covers_url = db_paths[region].format(file="musicVocals")
     covers_data_resp = requests.get(covers_url)
@@ -177,6 +176,8 @@ def exporter(locale, out_path: Path, chart_id: str, region: str = "auto"):
 
     all_covers = [cover for cover in covers_data if cover.get("musicId") == chart_id]
 
+    cover_names_map = {}
+
     def handle_cover(cover: str) -> str:
         cover_caption = cover["caption"]
         en_cover_caption = None
@@ -211,6 +212,7 @@ def exporter(locale, out_path: Path, chart_id: str, region: str = "auto"):
                     char for char in external_chars_data if char["id"] == charId
                 )
                 char_name = char_data["name"]
+                character_names.append(char_name)
                 if region != "en":
                     en_char_data = next(
                         (
@@ -227,6 +229,10 @@ def exporter(locale, out_path: Path, chart_id: str, region: str = "auto"):
                         en_character_names.append(char_name)
             else:
                 print(f"WARN! character not game or external found: {character}")
+
+            cover_names_map[cover["id"]] = (
+                character_names if character_names else en_character_names
+            )
         en_cover_map = {
             "vs_": "Virtual Singer ver.",
             "se_": "Sekai ver.",
@@ -259,6 +265,7 @@ def exporter(locale, out_path: Path, chart_id: str, region: str = "auto"):
         [handle_cover(cover) for cover in all_covers],
     )
     cover = all_covers[int(cover_index) - 1]
+    singer = ", ".join(cover_names_map[cover["id"]])
     
     possible_jacket_variants_url = db_paths[region].format(file="musicAssetVariants")
     possible_jacket_variants_resp = requests.get(possible_jacket_variants_url)
@@ -342,11 +349,6 @@ def exporter(locale, out_path: Path, chart_id: str, region: str = "auto"):
         music_path = level_out_path / "music.mp3"
         download_file(bgm_url, music_path)
 
-        print("Preview...")
-        preview_url = asset_paths["preview"].format(region=region, cover_name=cover_name)
-        preview_path = level_out_path / "preview.mp3"
-        download_file(preview_url, preview_path)
-
         print("Jacket...")
         cover_url = asset_paths["jacket"].format(region=region, jacket_name=jacket_name)
         jacket_path = level_out_path / "jacket.png"
@@ -367,7 +369,7 @@ def exporter(locale, out_path: Path, chart_id: str, region: str = "auto"):
             score = gzip.decompress(base64.b64decode(score_path.read_bytes()))
             f.write(score.decode("utf-8"))
 
-        manifest = level_to_manifest(chart_data, diff, chart_id, dl_mv)
+        manifest = level_to_manifest(chart_data, diff, chart_id, dl_mv, play_levels[diff], singer)
         
         with open(level_out_path / "manifest.json", "w", encoding="utf8") as f:
             json.dump(manifest, f)
@@ -384,7 +386,7 @@ def exporter(locale, out_path: Path, chart_id: str, region: str = "auto"):
         shutil.rmtree(level_out_path)
     return True
 
-def level_to_manifest(chart_data, diff: str, id, mv: False):
+def level_to_manifest(chart_data, diff: str, id, mv: False, play_level: int, singer: str):
     
     m = chart_data
     
@@ -395,6 +397,8 @@ def level_to_manifest(chart_data, diff: str, id, mv: False):
     m["audioFileName"] = "music.mp3"
     m["jacketFileName"] = "jacket.png"
     m["scoreFileName"] = "score.json"
+    m["playLevel"] = play_level
+    m["singer"] = singer
     
     m["videoFileName"] = "video.mp4" if mv else ""
 
